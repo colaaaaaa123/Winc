@@ -131,6 +131,27 @@ fn the_full_preview_edits_the_document() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// 回归：只看预览时文件被其他程序改写，整个重新读入之后预览仍可直接编辑，左侧仍写原文行号。
+#[test]
+fn the_full_preview_stays_editable_after_the_file_changes_on_disk() {
+    let (mut app, dir) = live_doc("md-live-reload", "# 标题\n\n第一段\n");
+    assert!(app.markdown_live());
+
+    // 改的不只是末尾，整个重新读入。修改时间的精度可能只到秒：显式设置一个更晚的时间。
+    let changed = "# 标题\n\n改过的第一段\n\n第二段\n";
+    let path = dir.join("LIVE.md");
+    std::fs::write(&path, changed).unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+    let file = std::fs::File::options().write(true).open(&path).unwrap();
+    file.set_modified(later).unwrap();
+    app.sync_documents(|_| true);
+    settle(&mut app);
+    assert_eq!(doc_text(&app), changed);
+    assert!(app.markdown_live());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn the_caret_paragraph_keeps_its_look() {
     use crate::app::preview::markdown::laid::full_text;
