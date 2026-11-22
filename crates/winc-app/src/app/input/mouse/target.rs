@@ -900,6 +900,9 @@ impl App {
             return;
         }
 
+        let target = self.target_at(x, y);
+        // 差异两侧只在各行文字上显示文本光标：折叠的一段、最后一行下方的空白和盖在差异上的
+        // 面板、卡片处显示箭头。
         let in_text = self.editor.active.is_some()
             && self.active_shows_text()
             && !matches!(
@@ -911,11 +914,22 @@ impl App {
             && !(self.overlays.picker.open && self.layout.picker.contains(x, y))
             && !self.over_corner_card(x, y)
             && x < self.layout.editor.right() - SCROLLBAR_HIT
-            || self.over_diff_text(x, y) && x < self.layout.editor.right() - SCROLLBAR_HIT;
-        // 日志详情中可选择的文字上（不含可点击的提交号和文件）显示文本光标。
+            || matches!(target, Target::Editor)
+                && self.over_diff_line(x, y)
+                && x < self.layout.editor.right() - SCROLLBAR_HIT;
+        // 日志详情中可选择的文字上（不含可点击的提交号和文件）显示文本光标。Markdown 预览只在
+        // 文字上显示，留白、图片和盖在预览上的面板、卡片处显示箭头。拖选期间一直显示文本光标。
         let in_field = self.field_at(x, y).is_some()
-            || matches!(self.pointer.drag, Drag::LogText | Drag::MarkdownText)
-            || (self.preview.markdown.area.contains(x, y) && self.markdown_link_at(x, y).is_none())
+            || matches!(
+                self.pointer.drag,
+                Drag::LogText
+                    | Drag::MarkdownText
+                    | Drag::DiffSelect { .. }
+                    | Drag::DiffSelectRead { .. }
+                    | Drag::DiffColumns { .. }
+            )
+            || (matches!(target, Target::MarkdownText(None))
+                && crate::app::preview::markdown::laid::over_text(self, x, y))
             || (self.log_active()
                 && crate::layout::hit(&self.hits.log, x, y).is_none()
                 && self.log_text_at(x, y, false).is_some());

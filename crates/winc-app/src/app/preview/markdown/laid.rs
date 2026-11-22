@@ -1071,6 +1071,28 @@ pub(crate) fn hit(app: &App, x: f32, y: f32) -> Option<Hit> {
     best.map(|(_, hit)| hit)
 }
 
+/// 预览上窗口坐标 `(x, y)` 处是否有能选中的文字，决定鼠标指针是否显示为文本光标。
+///
+/// 与 [`hit`] 不同，不取最近的字：留白、行尾之后、图片、分隔线和块之间的空隙都不算。
+/// 行框（见 [`line_box`]）高 1.4 倍字号，行距至多 1.5 倍字号：各行上下各放宽 0.1 倍字号，
+/// 盖住相邻两行之间的空隙，鼠标在段落中上下移动时指针不来回切换。
+pub(crate) fn over_text(app: &App, x: f32, y: f32) -> bool {
+    let Some(laid) = app.preview.markdown.layout.as_ref() else {
+        return false;
+    };
+    let origin = app.preview.markdown.area.y + laid.pad - app.preview.markdown.scroll();
+    let (x, y) = (x - laid.left, y - origin);
+    let i = laid.tops.partition_point(|&t| t <= y).saturating_sub(1);
+    let blocks = i.saturating_sub(1)..(i + 2).min(laid.blocks.len());
+    laid.spans(blocks)
+        .any(|(top, _, ix, baseline, size, span, ..)| {
+            let (y0, h) = line_box(top + baseline, size);
+            let width: f32 = span.advances.iter().sum();
+            let reach = size * 0.1;
+            (ix..=ix + width).contains(&x) && (y0 - reach..=y0 + h + reach).contains(&y)
+        })
+}
+
 /// 可编辑的预览左侧写行号的各显示行：原文行号（从 0 起）和显示行的基线（相对内容顶部）。
 ///
 /// 只看上下范围与 `view`（相对内容顶部）相交的顶层块。显示行从原文一行的开头排起（之前只有

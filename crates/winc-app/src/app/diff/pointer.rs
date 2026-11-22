@@ -417,6 +417,34 @@ impl App {
             && self.diff_unified_side_at(y) != Some(LEFT)
     }
 
+    /// 鼠标是否位于差异某一侧的一行文字上，决定鼠标指针是否显示为文本光标。
+    ///
+    /// 与 [`App::over_diff_text`] 不同，折叠的一段（点击后展开）和最后一行下方的空白都不算。
+    pub(in crate::app) fn over_diff_line(&self, x: f32, y: f32) -> bool {
+        let Some(doc) = self.editor.active() else {
+            return false;
+        };
+        let Some(view) = doc.diff.as_deref() else {
+            return false;
+        };
+        let parts = diff_parts(self.layout.editor, view, self.metrics.cell);
+        let Some(side) = [LEFT, RIGHT]
+            .into_iter()
+            .find(|&side| parts.panes[side].text.contains(x, y))
+        else {
+            return false;
+        };
+        let lh = self.fonts.line_height;
+        let (pos, below) = (doc.scroll_line.max(0.0), f64::from((y - parts.body.y) / lh));
+        let row = if view.is_unified() {
+            view.unified_row((pos + below).floor().max(0.0) as usize)
+        } else {
+            let visible = f64::from(parts.body.h / lh);
+            Some((side, view.row_under(side, pos, visible, below)))
+        };
+        row.is_some_and(|(side, row)| view.line_at(side, row).is_some())
+    }
+
     /// 返回单栏时窗口纵坐标 `y` 处的显示行所属的一侧；并排时或该位置没有行时为 `None`。
     fn diff_unified_side_at(&self, y: f32) -> Option<usize> {
         let doc = self.editor.active()?;

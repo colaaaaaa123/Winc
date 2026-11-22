@@ -607,3 +607,42 @@ fn each_side_of_a_diff_has_a_horizontal_scrollbar_and_the_two_move_together() {
     assert!(bars.thumb(LEFT, 0.0).is_none() && bars.thumb(RIGHT, 0.0).is_none());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// 回归：差异两侧只在各行文字上显示文本光标，折叠的一段和最后一行下方的空白显示箭头。
+#[test]
+fn the_text_cursor_shows_only_over_diff_lines() {
+    use winc_editor::diff_view::{DiffSide, DiffView};
+    use winit::window::CursorIcon;
+
+    let dir = sample_folder("diff-cursor");
+    let mut app = app_with(&dir.join("short.rs"), false);
+    let language = winc_syntax::detect("main.rs");
+    let side = |text: &str| DiffSide::new("abc1234", text, None, language);
+    // 两处改动之间未改动的一长段折叠成一行。
+    let same: String = (0..30).map(|i| format!("let x{i} = {i};\n")).collect();
+    let view = DiffView::new(
+        side(&format!("let old = 1;\n{same}let end = 1;\n")),
+        side(&format!("let fresh = 2;\n{same}let end = 2;\n")),
+    );
+    app.editor.show_diff_in(None, "main.rs", view);
+    paint(&mut app);
+
+    let (text, folded, below) = {
+        let view = app.editor.active().unwrap().diff.as_deref().unwrap();
+        let parts = crate::app::diff_parts(app.layout.editor, view, app.metrics.cell);
+        let fold = (view.rows[RIGHT].iter())
+            .position(|row| matches!(row, SideRow::Fold { .. }))
+            .expect("中间的一长段折叠成一行");
+        let x = parts.panes[RIGHT].text.x + 40.0;
+        let y = |row: usize| parts.body.y + app.fonts.line_height * (row as f32 + 0.5);
+        ((x, y(0)), (x, y(fold)), (x, y(view.row_count() + 2)))
+    };
+    let cursor = |app: &mut App, (x, y): (f32, f32)| {
+        app.on_mouse_move(x, y);
+        app.pointer.cursor_icon
+    };
+    assert_eq!(cursor(&mut app, text), CursorIcon::Text);
+    assert_eq!(cursor(&mut app, folded), CursorIcon::Default);
+    assert_eq!(cursor(&mut app, below), CursorIcon::Default);
+    let _ = std::fs::remove_dir_all(&dir);
+}

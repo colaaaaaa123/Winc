@@ -317,6 +317,36 @@ fn code_blocks_offer_a_copy_button_on_hover() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// 回归：预览只在文字上显示文本光标，内容左侧的行号和留白、行尾之后和文末下方的空白显示箭头。
+#[test]
+fn the_text_cursor_shows_only_over_preview_text() {
+    use winit::window::CursorIcon;
+
+    let (mut app, dir) = live_doc("md-cursor", "# 标题\n\n一段正文\n");
+    let area = app.preview.markdown.area;
+    let (text, margin, after) = {
+        let laid = app.preview.markdown.layout.as_ref().unwrap();
+        let at = doc_text(&app).find("正文").unwrap();
+        let (x, y, h) = laid.caret_point(at).unwrap();
+        let y = area.y + y - app.preview.markdown.scroll() + h / 2.0;
+        let after = laid.left + laid.key.width - 10.0;
+        ((laid.left + x + 2.0, y), (laid.left - 16.0, y), (after, y))
+    };
+    let cursor = |app: &mut App, (x, y): (f32, f32)| {
+        app.on_mouse_move(x, y);
+        app.pointer.cursor_icon
+    };
+    assert_eq!(cursor(&mut app, text), CursorIcon::Text);
+    assert_eq!(cursor(&mut app, margin), CursorIcon::Default);
+    assert_eq!(cursor(&mut app, after), CursorIcon::Default);
+    assert_eq!(
+        cursor(&mut app, (text.0, area.bottom() - 20.0)),
+        CursorIcon::Default
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn links_to_headings_in_other_files_open_there() {
     let dir = sample_folder("md-other-file");
